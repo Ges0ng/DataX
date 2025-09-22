@@ -109,9 +109,10 @@ public final class WriterUtil {
     }
 
     public static String getWriteTemplate(List<String> columnHolders, List<String> valueHolders, String writeMode, DataBaseType dataBaseType, boolean forceUseUpdate) {
+        boolean update = writeMode.trim().toLowerCase().startsWith("update");
         boolean isWriteModeLegal = writeMode.trim().toLowerCase().startsWith("insert")
                 || writeMode.trim().toLowerCase().startsWith("replace")
-                || writeMode.trim().toLowerCase().startsWith("update");
+                || update;
 
         if (!isWriteModeLegal) {
             throw DataXException.asDataXException(DBUtilErrorCode.ILLEGAL_VALUE,
@@ -119,21 +120,29 @@ public final class WriterUtil {
         }
         // && writeMode.trim().toLowerCase().startsWith("replace")
         String writeDataSqlTemplate;
-        if (forceUseUpdate ||
-                ((dataBaseType == DataBaseType.MySql || dataBaseType == DataBaseType.Tddl) && writeMode.trim().toLowerCase().startsWith("update"))
-                ) {
+        if (forceUseUpdate || update) {
             //update只在mysql下使用
-
-            writeDataSqlTemplate = new StringBuilder()
-                    .append("INSERT INTO %s (").append(StringUtils.join(columnHolders, ","))
-                    .append(") VALUES(").append(StringUtils.join(valueHolders, ","))
-                    .append(")")
-                    .append(onDuplicateKeyUpdateString(columnHolders))
-                    .toString();
+            if (dataBaseType == DataBaseType.MySql || dataBaseType == DataBaseType.Tddl) {
+                writeDataSqlTemplate = new StringBuilder()
+                        .append("INSERT INTO %s (").append(StringUtils.join(columnHolders, ","))
+                        .append(") VALUES(").append(StringUtils.join(valueHolders, ","))
+                        .append(")")
+                        .append(onDuplicateKeyUpdateString(columnHolders))
+                        .toString();
+            }
+            //update在Oracle下使用
+            else if (dataBaseType == DataBaseType.Oracle) {
+                writeDataSqlTemplate = onMergeIntoDoString(writeMode, columnHolders, valueHolders) + "INSERT (" +
+                        StringUtils.join(columnHolders, ",") +
+                        ") VALUES(" + StringUtils.join(valueHolders, ",") +")";
+            }else {
+                throw DataXException.asDataXException(DBUtilErrorCode.ILLEGAL_VALUE,
+                        String.format("当前数据库不支持 writeMode:%s 模式.", writeMode));
+            }
         } else {
 
             //这里是保护,如果其他错误的使用了update,需要更换为replace
-            if (writeMode.trim().toLowerCase().startsWith("update")) {
+            if (update) {
                 writeMode = "replace";
             }
             writeDataSqlTemplate = new StringBuilder().append(writeMode)
@@ -143,6 +152,60 @@ public final class WriterUtil {
         }
 
         return writeDataSqlTemplate;
+    }
+
+    public static String onMergeIntoDoString(String merge, List<String> columnHolders, List<String> valueHolders) {
+        String[] sArray = getStrings(merge);
+        StringBuilder sb = new StringBuilder();
+        sb.append("MERGE INTO %s A USING ( SELECT ");
+        boolean first = true;
+        boolean first1 = true;
+        StringBuilder str = new StringBuilder();
+        StringBuilder update = new StringBuilder();
+        for (String columnHolder : columnHolders) {
+            if (Arrays.asList(sArray).contains(columnHolder)) {
+                if (!first) {
+                    sb.append(",");
+                    str.append(" AND ");
+                } else {
+                    first = false;
+                }
+                str.append("TMP.").append(columnHolder);
+                sb.append("?");
+                str.append(" = ");
+                sb.append(" AS ");
+                str.append("A.").append(columnHolder);
+                sb.append(columnHolder);
+            }
+        }
+
+        for (String columnHolder : columnHolders) {
+            if (!Arrays.asList(sArray).contains(columnHolder)) {
+                if (!first1) {
+                    update.append(",");
+                } else {
+                    first1 = false;
+                }
+                update.append(columnHolder);
+                update.append(" = ");
+                update.append("?");
+            }
+        }
+
+        sb.append(" FROM DUAL ) TMP ON (");
+        sb.append(str);
+        sb.append(" ) WHEN MATCHED THEN UPDATE SET ");
+        sb.append(update);
+        sb.append(" WHEN NOT MATCHED THEN ");
+        return sb.toString();
+    }
+
+    public static String[] getStrings(String merge) {
+        merge = merge.replace("update", "");
+        merge = merge.replace("(", "");
+        merge = merge.replace(")", "");
+        merge = merge.replace(" ", "");
+        return merge.split(",");
     }
 
     public static String onDuplicateKeyUpdateString(List<String> columnHolders){

@@ -12,6 +12,9 @@ import com.alibaba.datax.plugin.rdbms.util.DataBaseType;
 import com.alibaba.datax.plugin.rdbms.util.RdbmsException;
 import com.alibaba.datax.plugin.rdbms.writer.util.OriginalConfPretreatmentUtil;
 import com.alibaba.datax.plugin.rdbms.writer.util.WriterUtil;
+
+import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
@@ -263,12 +266,27 @@ public class CommonRdbmsWriter {
             DBUtil.closeDBResources(null, null, connection);
         }
 
+        // 替换原先的代码块
         public void startWriteWithConnection(RecordReceiver recordReceiver, TaskPluginCollector taskPluginCollector, Connection connection) {
             this.taskPluginCollector = taskPluginCollector;
-
+            List<String> columns = new LinkedList<>();
+            if (this.dataBaseType == DataBaseType.Oracle && writeMode.trim().toLowerCase().startsWith("update") ) {
+                String merge = this.writeMode;
+                String[] sArray = WriterUtil.getStrings(merge);
+                this.columns.forEach(column->{
+                    if (Arrays.asList(sArray).contains(column)) {
+                        columns.add(column);
+                    }
+                });
+                this.columns.forEach(column->{
+                    if (!Arrays.asList(sArray).contains(column)) {
+                        columns.add(column);
+                    }
+                });
+            }
+            columns.addAll(this.columns);
             // 用于写入数据的时候的类型根据目的表字段类型转换
-            this.resultSetMetaData = DBUtil.getColumnMetaData(connection,
-                    this.table, StringUtils.join(this.columns, ","));
+            this.resultSetMetaData = DBUtil.getColumnMetaData(connection, this.table, StringUtils.join(columns, ","));
             // 写数据库的SQL语句
             calcWriteRecordSql();
 
@@ -346,28 +364,59 @@ public class CommonRdbmsWriter {
         }
 
         protected void doBatchInsert(Connection connection, List<Record> buffer)
-                throws SQLException {
+                throws SQLException
+        {
             PreparedStatement preparedStatement = null;
             try {
                 connection.setAutoCommit(false);
                 preparedStatement = connection
                         .prepareStatement(this.writeRecordSql);
-
-                for (Record record : buffer) {
-                    preparedStatement = fillPreparedStatement(
-                            preparedStatement, record);
-                    preparedStatement.addBatch();
+                if (this.dataBaseType == DataBaseType.Oracle && !"insert".equalsIgnoreCase(this.writeMode)) {
+                    String merge = this.writeMode;
+                    String[] sArray = WriterUtil.getStrings(merge);
+                    for (Record record : buffer) {
+                        List<Column> recordOne = new ArrayList<>();
+                        for (int j = 0; j < this.columns.size(); j++) {
+                            if (Arrays.asList(sArray).contains(this.columns.get(j))) {
+                                recordOne.add(record.getColumn(j));
+                            }
+                        }
+                        for (int j = 0; j < this.columns.size(); j++) {
+                            if (!Arrays.asList(sArray).contains(this.columns.get(j))) {
+                                recordOne.add(record.getColumn(j));
+                            }
+                        }
+                        for (int j = 0; j < this.columns.size(); j++) {
+                            recordOne.add(record.getColumn(j));
+                        }
+                        for (int j = 0; j < recordOne.size(); j++) {
+                            record.setColumn(j, recordOne.get(j));
+                        }
+                        preparedStatement = fillPreparedStatement(
+                                preparedStatement, record);
+                        preparedStatement.addBatch();
+                    }
+                }
+                else {
+                    for (Record record : buffer) {
+                        preparedStatement = fillPreparedStatement(
+                                preparedStatement, record);
+                        preparedStatement.addBatch();
+                    }
                 }
                 preparedStatement.executeBatch();
                 connection.commit();
-            } catch (SQLException e) {
-                LOG.warn("回滚此次写入, 采用每次写入一行方式提交. 因为:" + e.getMessage());
+            }
+            catch (SQLException e) {
+                LOG.warn("回滚此次写入, 采用每次写入一行方式提交. 因为: {}", e.getMessage());
                 connection.rollback();
                 doOneInsert(connection, buffer);
-            } catch (Exception e) {
+            }
+            catch (Exception e) {
                 throw DataXException.asDataXException(
                         DBUtilErrorCode.WRITE_DATA_ERROR, e);
-            } finally {
+            }
+            finally {
                 DBUtil.closeDBResources(preparedStatement, null);
             }
         }
@@ -411,12 +460,11 @@ public class CommonRdbmsWriter {
         // 直接使用了两个类变量：columnNumber,resultSetMetaData
         protected PreparedStatement fillPreparedStatement(PreparedStatement preparedStatement, Record record)
                 throws SQLException {
-            for (int i = 0; i < this.columnNumber; i++) {
+            for (int i = 0; i < record.getColumnNumber(); i++) {
                 int columnSqltype = this.resultSetMetaData.getMiddle().get(i);
                 String typeName = this.resultSetMetaData.getRight().get(i);
-                preparedStatement = fillPreparedStatementColumnType(preparedStatement, i, columnSqltype, typeName, record.getColumn(i));
+                preparedStatement = fillPreparedStatementColumnType(preparedStatement, i,columnSqltype, typeName,record.getColumn(i));
             }
-
             return preparedStatement;
         }
 
