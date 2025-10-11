@@ -18,6 +18,11 @@
     </properties>
 
     <dependencies>
+<!--        <dependency>-->
+<!--            <groupId>com.twitter</groupId>-->
+<!--            <artifactId>parquet-hadoop-bundle</artifactId>-->
+<!--            <version>1.6.0rc3</version>-->
+<!--        </dependency>-->
         <!-- https://mvnrepository.com/artifact/com.twitter/parquet-hadoop-bundle -->
         <dependency>
             <groupId>com.twitter</groupId>
