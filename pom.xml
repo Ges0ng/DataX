@@ -52,6 +52,7 @@
         <module>sqlserverreader</module>
         <module>postgresqlreader</module>
         <module>kingbaseesreader</module>
+        <module>kafkawriter</module>
         <module>oraclereader</module>
         <module>cassandrareader</module>
         <module>oceanbasev10reader</module>
@@ -98,6 +99,7 @@
         <module>adbpgwriter</module>
         <module>hologresjdbcwriter</module>
         <module>rdbmswriter</module>
+        <module>rabbitmqwriter</module>
 
 
         <module>odpswriter</module>
@@ -110,6 +112,7 @@
         <module>kuduwriter</module>
         <module>ftpwriter</module>
         <module>hdfswriter</module>
+        <module>hivereader</module>
         <module>txtfilewriter</module>
         <module>streamwriter</module>
 

@@ -5,6 +5,8 @@ import com.alibaba.datax.common.exception.DataXException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.alibaba.druid.util.JdbcConstants.HIVE;
+
 /**
  * refer:http://blog.csdn.net/ring0hx/article/details/6152528
  * <p/>
@@ -28,7 +30,8 @@ public enum DataBaseType {
     Sybase("sybase", "com.sybase.jdbc4.jdbc.SybDriver"),
     GaussDB("gaussdb", "org.opengauss.Driver"),
     Databend("databend", "com.databend.jdbc.DatabendDriver"),
-    Doris("doris","com.mysql.jdbc.Driver");
+    Doris("doris","com.mysql.jdbc.Driver"),
+    HIVE("hive2","org.apache.hive.jdbc.HiveDriver");;
 
     private String typeName;
     private String driverClassName;
@@ -77,6 +80,8 @@ public enum DataBaseType {
             case GaussDB:
                 break;
             case Doris:
+                break;
+            case HIVE:
                 break;
             default:
                 throw DataXException.asDataXException(DBUtilErrorCode.UNSUPPORTED_TYPE, "unsupported database type.");
